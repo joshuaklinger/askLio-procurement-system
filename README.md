@@ -7,7 +7,6 @@ An intelligent web application designed to streamline the procurement process. T
 ## 🚀 Key Features
 
 * **AI Document Scanning**: Automatically extracts vendor names, VAT IDs, total costs, and detailed line items from PDF offers using GPT-4.
-* **Intelligent Classification**: Utilizes a Naive Bayes classifier (`nb_classifier.joblib`) to suggest commodity groups based on request titles.
 * **Interactive Dashboard**: A real-time overview of all procurement requests with status tracking (Open, In Progress, Approved, Rejected).
 * **Audit Trail**: Every status change is logged with a timestamp and the acting user to ensure compliance and transparency.
 * **Structured Data Validation**: Uses Pydantic to ensure all data extracted by AI follows strict procurement schemas.
@@ -15,7 +14,7 @@ An intelligent web application designed to streamline the procurement process. T
 ## 🛠️ Tech Stack
 
 * **Backend**: Flask (Python)
-* **AI/ML**: OpenAI GPT-4 API, Scikit-learn (Naive Bayes)
+* **AI/ML**: OpenAI GPT-4 API
 * **Database**: SQLite (SQLAlchemy-ready)
 * **PDF Processing**: PyPDF
 * **Validation**: Pydantic V2
