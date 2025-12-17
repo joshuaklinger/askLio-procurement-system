@@ -1,0 +1,16 @@
+.env
+ProcRequests.db
+
+venv/
+env/
+.venv/
+
+__pycache__/
+*.py[cod]
+*$py.class
+
+.DS__Store
+Thumbs.db
+
+.vscode
+.idea/

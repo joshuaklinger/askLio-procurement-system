@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Request Overview{% endblock %}
+
+{% block content %}
+<div class="container mt-5 mb-5">
+    <h2>📋 Procurement Request Overview</h2>
+    <p class="text-muted">Manage the status of all incoming requests.</p>
+    <hr>
+    
+    <div class="d-flex justify-content-between mb-3">
+        <h4>Active Requests ({{ requests | length }})</h4>
+        <a href="{{ url_for('new_request') }}" class="btn btn-success">➕ Create New Request</a>
+    </div>
+
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Title</th>
+                <th>Vendor</th>
+                <th>Requestor</th>
+                <th>Dept.</th>
+                <th>Commodity Group</th>
+                <th>Total Cost</th>
+                <th>Created</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for req in requests %}
+            <tr>
+                <td>{{ req.request_id }}</td>
+                <td>{{ req.title }}</td>
+                <td>{{ req.vendor_name }}</td>
+                <td>{{ req.requestor_name }}</td>
+                <td>{{ req.department }}</td>
+                <td>{{ req.commodity_group }}</td>
+                <td>€{{ '%.2f' % req.total_cost }}</td>
+                <td>{{ req.created_at.split(' ')[0] }}</td>
+                <td>
+                    <select class="form-select status-select" data-request-id="{{ req.request_id }}">
+                        <option value="Open" {% if req.status == 'Open' %}selected{% endif %}>Open</option>
+                        <option value="In Progress" {% if req.status == 'In Progress' %}selected{% endif %}>In Progress</option>
+                        <option value="Closed" {% if req.status == 'Closed' %}selected{% endif %}>Closed</option>
+                    </select>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    
+    <div id="status-message" class="alert alert-success mt-3 d-none"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const statusMessage = document.getElementById('status-message');
+
+    document.querySelectorAll('.status-select').forEach(select => {
+        select.addEventListener('change', function() {
+            const selectElement = this;
+            const requestId = selectElement.getAttribute('data-request-id');
+            const newStatus = selectElement.value;
+            const originalStatus = selectElement.getAttribute('data-original-status') || selectElement.value;
+            
+            // Set the original status for undoing on error
+            if (!selectElement.hasAttribute('data-original-status')) {
+                selectElement.setAttribute('data-original-status', originalStatus);
+            }
+            
+            // AJAX call to update the status
+            fetch(`/request/status/${requestId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: `status=${newStatus}&user=Procurement%20Manager` 
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    statusMessage.textContent = `Request ${requestId} status updated to ${data.new_status}. History logged.`;
+                    statusMessage.classList.remove('d-none', 'alert-danger');
+                    statusMessage.classList.add('alert-success');
+                    selectElement.setAttribute('data-original-status', data.new_status);
+                } else {
+                    alert('Failed to update status. Please check the server logs.');
+                    statusMessage.textContent = `Error updating request ${requestId}: ${data.message}`;
+                    statusMessage.classList.remove('d-none', 'alert-success');
+                    statusMessage.classList.add('alert-danger');
+                    // Revert dropdown on failure
+                    selectElement.value = originalStatus;
+                }
+            })
+            .catch(error => {
+                console.error('Network or server error:', error);
+                alert('A critical error occurred while communicating with the server.');
+                selectElement.value = originalStatus; // Revert on network error
+            });
+        });
+    });
+});
+</script>
+{% endblock %}
