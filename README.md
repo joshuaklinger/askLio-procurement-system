@@ -27,10 +27,7 @@ An intelligent web application designed to streamline the procurement process. T
 │   ├── app.py                  # Main Flask application logic
 │   ├── extraction_schema.py    # Pydantic data models
 │   ├── db_setup.py             # Database initialization & schema
-│   ├── templates/              # HTML frontend (Jinja2)
-│   ├── static/                 # CSS & Frontend assets
-│   ├── nb_classifier.joblib    # Trained Commodity Group model
-│   └── tfidf_vectorizer.joblib  # ML Vectorizer for text processing
+│   └── templates/              # HTML frontend (Jinja2)
 ├── .env.example                # Template for environment variables
 ├── .gitignore                  # Git exclusion rules
 ├── requirements.txt            # Project dependencies
