@@ -1,4 +1,5 @@
 AI-Powered Procurement Intake System
+
 An intelligent web application designed to streamline the procurement process. This system allows users to manually enter purchase requests or utilize AI-driven PDF scanning to automatically populate request data, classify commodity groups, and maintain a full audit trail.
 
 🚀 Key Features
