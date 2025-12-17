@@ -1,4 +1,3 @@
-
 import os
 import io
 import json
@@ -19,7 +18,7 @@ app = Flask(__name__)
 
 # Constants
 DB_NAME = 'ProcRequests.db'
-LLM_MODEL = "gpt-4"  # Using your available model
+LLM_MODEL = "gpt-4" 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
@@ -27,25 +26,33 @@ if not OPENAI_API_KEY:
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+# The official master list of 50 Commodity Groups
+COMMODITY_GROUPS = [
+    "Accommodation Rentals", "Membership Fees", "Workplace Safety", "Consulting",
+    "Financial Services", "Fleet Management", "Recruitment Services", "Professional Development",
+    "Miscellaneous Services", "Insurance", "Electrical Engineering", "Facility Management Services",
+    "Security", "Renovations", "Office Equipment", "Energy Management", "Maintenance",
+    "Cafeteria and Kitchenettes", "Cleaning", "Audio and Visual Production", "Books/Videos/CDs",
+    "Printing Costs", "Software Development for Publishing", "Material Costs", "Shipping for Production",
+    "Digital Product Development", "Pre-production", "Post-production Costs", "Hardware",
+    "IT Services", "Software", "Courier, Express, and Postal Services", "Warehousing and Material Handling",
+    "Transportation Logistics", "Delivery Services", "Advertising", "Outdoor Advertising",
+    "Marketing Agencies", "Direct Mail", "Customer Communication", "Online Marketing",
+    "Events", "Promotional Materials", "Warehouse and Operational Equipment", "Production Machinery",
+    "Spare Parts", "Internal Transportation", "Production Materials", "Consumables", "Maintenance and Repairs"
+]
 
 # --- Helper Logic ---
 
 def get_db_connection():
-    """Establishes a connection to the SQLite database."""
     conn = sqlite3.connect(DB_NAME)
     conn.row_factory = sqlite3.Row
     return conn
 
-
 def extract_text_from_pdf(file_bytes):
-    """
-    Extracts readable text from a PDF stream. 
-    Prevents Context Length errors by avoiding binary data.
-    """
     try:
         reader = PdfReader(io.BytesIO(file_bytes))
         text = ""
-        # Extract from first 3 pages (where invoice/offer data usually lives)
         for page in reader.pages[:3]:
             page_text = page.extract_text()
             if page_text:
@@ -55,39 +62,34 @@ def extract_text_from_pdf(file_bytes):
         print(f"PDF Parsing Error: {e}")
         return ""
 
-
 def extract_data_via_ai(document_text):
     """
-    Improved extraction using Few-Shot prompting and strict field mapping.
+    Improved extraction using Few-Shot prompting, strict field mapping, 
+    and official Commodity Group classification.
     """
+    # Convert list to a string for the prompt
+    group_list_str = ", ".join(COMMODITY_GROUPS)
+
     system_prompt = (
         "You are a professional procurement data extractor. Your goal is to parse vendor offers into a specific JSON format.\n\n"
         "STRICT RULES:\n"
-        "1. Extract ONLY the following fields: requestor_name, title, vendor_name, vat_id, total_cost, department, extracted_description_text, order_lines.\n"
-        "2. 'order_lines' must be a list of objects with these EXACT keys: description, unit_price, amount, unit, total_price.\n"
-        "3. All price and amount fields MUST be numbers (floats/integers). Remove currency symbols like € or $.\n"
-        "4. If a field like 'requestor_name' is missing, default to 'Vladimir Keil'.\n"
-        "5. If 'department' is missing, default to 'Operations'.\n"
-        "6. 'extracted_description_text' should be a summary of all items (e.g. 'Photoshop and Illustrator Licenses').\n\n"
-        "--- PERFECT EXAMPLE ---\n"
-        "Input: 'Global Tech Solutions, VAT: DE987654321. Offer for Creative Marketing. 10x Photoshop @ 150 each, Total 1500.'\n"
+        "1. Extract ONLY these fields: requestor_name, title, vendor_name, vat_id, total_cost, department, extracted_description_text, order_lines, commodity_group.\n"
+        f"2. 'commodity_group' MUST be exactly one from this list: {group_list_str}.\n"
+        "3. 'order_lines' must use EXACT keys: description, unit_price, amount, unit, total_price.\n"
+        "4. Remove currency symbols (€, $) from numbers.\n"
+        "5. Defaults: requestor_name='Vladimir Keil', department='Operations'.\n\n"
+        "--- EXAMPLE ---\n"
+        "Input: 'Apple Store Offer for 5 MacBooks for the IT Dept, Total 5000.'\n"
         "Output: {\n"
-        '  "requestor_name": "Vladimir Keil",\n'
-        '  "title": "Software Licenses",\n'
-        '  "vendor_name": "Global Tech Solutions",\n'
-        '  "vat_id": "DE987654321",\n'
-        '  "total_cost": 1500.0,\n'
-        '  "department": "Creative Marketing",\n'
-        '  "extracted_description_text": "Adobe Photoshop License 10 units",\n'
-        '  "order_lines": [\n'
-        '    {"description": "Adobe Photoshop License", "unit_price": 150.0, "amount": 10.0, "unit": "licenses", "total_price": 1500.0}\n'
-        '  ]\n'
+        '  "requestor_name": "Vladimir Keil", "title": "New Laptops", "vendor_name": "Apple Store", '
+        '  "vat_id": "Unknown", "total_cost": 5000.0, "department": "IT Dept", "commodity_group": "Hardware", '
+        '  "extracted_description_text": "5x MacBook Laptops", '
+        '  "order_lines": [{"description": "MacBook", "unit_price": 1000.0, "amount": 5, "unit": "pcs", "total_price": 5000.0}]\n'
         "}\n"
         "--- END EXAMPLE ---\n\n"
-        "Return ONLY the raw JSON object for the text provided by the user."
+        "Return ONLY the raw JSON object."
     )
     
-    # Stay within gpt-4 context limits
     truncated_text = document_text[:12000]
 
     response = client.chat.completions.create(
@@ -96,62 +98,40 @@ def extract_data_via_ai(document_text):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Document Text:\n{truncated_text}"}
         ],
-        temperature=0  # Set to 0 for maximum consistency and accuracy
+        temperature=0
     )
     
     content = response.choices[0].message.content.strip()
-    
-    # Remove markdown code blocks if the AI includes them
     if "```" in content:
         content = content.split("```")[1].replace("json", "").strip()
 
     try:
-        # 1. Try to validate with Pydantic first
+        # Validate with Pydantic
         return ProcurementData.model_validate_json(content).model_dump()
     except Exception as e:
-        print(f"Validation failed, attempting manual JSON fix: {e}")
+        print(f"AI Validation Error: {e}")
         try:
-            # 2. Fallback: Parse raw JSON and manually fix common mismatches
+            # Fallback manual cleanup
             raw_data = json.loads(content)
-            
-            # Auto-fix common field name hallucinations
-            if "items" in raw_data and "order_lines" not in raw_data:
-                raw_data["order_lines"] = raw_data.pop("items")
-            
-            for line in raw_data.get("order_lines", []):
-                if "item" in line: line["description"] = line.pop("item")
-                if "price" in line: line["unit_price"] = line.pop("price")
-                if "quantity" in line: line["amount"] = line.pop("quantity")
-                if "total" in line: line["total_price"] = line.pop("total")
-                
+            if "items" in raw_data: raw_data["order_lines"] = raw_data.pop("items")
             return raw_data
-        except Exception:
-            # 3. Final Fallback: Return empty data if everything fails
-            return {
-                'requestor_name': 'Vladimir Keil', 'title': 'Extraction Error',
-                'vendor_name': 'Unknown', 'vat_id': 'N/A', 'total_cost': 0.0,
-                'department': 'Operations', 'order_lines': [], 'extracted_description_text': ''
-            }
+        except:
+            return {'requestor_name': 'Vladimir Keil', 'title': 'Error', 'vendor_name': 'Unknown', 'total_cost': 0.0, 'order_lines': []}
 
 # --- Routes ---
 
 @app.route('/')
 def overview():
-    """Dashboard showing existing procurement requests."""
     conn = get_db_connection()
     requests_list = conn.execute("SELECT * FROM requests ORDER BY created_at DESC").fetchall()
     conn.close()
     return render_template('overview.html', requests=requests_list)
 
-
 @app.route('/new_request', methods=['GET', 'POST'])
 def new_request():
-    """Handles manual entry and AI-assisted pre-filling."""
-    # List of groups for the dropdown
-    all_groups = ["Facility Management Services", "IT & Telecommunication", "Logistics", 
-                  "Marketing & Advertising", "Production"]
+    # Using the official 50 groups for the dropdown
+    all_groups = sorted(COMMODITY_GROUPS)
     
-    # Default data to prevent Jinja2 UndefinedError
     data = {
         'requestor_name': 'Vladimir Keil', 'title': '', 'vendor_name': '',
         'vat_id': '', 'total_cost': 0.0, 'department': 'Operations',
@@ -159,7 +139,6 @@ def new_request():
     }
 
     if request.method == 'POST':
-        # --- PHASE 1: AI Scan Request ---
         if 'offer_file' in request.files and request.files['offer_file'].filename != '':
             file = request.files['offer_file']
             raw_bytes = file.read()
@@ -172,7 +151,6 @@ def new_request():
             
             return render_template('new_request.html', data=data, all_groups=all_groups)
 
-        # --- PHASE 2: Manual Form Submission (Save to DB) ---
         form = request.form
         try:
             conn = get_db_connection()
@@ -193,17 +171,12 @@ def new_request():
 
     return render_template('new_request.html', data=data, all_groups=all_groups)
 
-
 @app.route('/update_status/<int:req_id>', methods=['POST'])
 def update_status(req_id):
-    """API endpoint for changing status and logging in history."""
     new_status = request.json.get('status')
     user = request.json.get('user', 'Procurement Manager')
-    
     conn = get_db_connection()
     conn.execute("UPDATE requests SET status = ? WHERE request_id = ?", (new_status, req_id))
-    
-    # Log to status_history (audit trail)
     conn.execute(
         "INSERT INTO status_history (request_id, new_status, changer_user) VALUES (?, ?, ?)",
         (req_id, new_status, user)
@@ -211,7 +184,6 @@ def update_status(req_id):
     conn.commit()
     conn.close()
     return jsonify({"success": True})
-
 
 if __name__ == '__main__':
     setup_database()
